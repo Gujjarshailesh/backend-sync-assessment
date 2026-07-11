@@ -1,5 +1,5 @@
 # Node
-node_modules/
+node_modules/*
 npm-debug.log*
 
 # Build output
@@ -22,3 +22,5 @@ Thumbs.db
 
 # Logs
 *.log
+
+/generated/prisma

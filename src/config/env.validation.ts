@@ -11,6 +11,7 @@ import { formatZodError } from '../common/utils/format-zod-error.util';
 export const envSchema = z.object({
   NODE_ENV: z.nativeEnum(Environment).default(Environment.Development),
   PORT: z.coerce.number().int().positive().default(3000),
+  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
 });
 
 export type EnvSchema = z.infer<typeof envSchema>;

@@ -26,4 +26,8 @@ export class AppConfigService {
   get isProduction(): boolean {
     return this.nodeEnv === Environment.Production;
   }
+
+  get databaseUrl(): string {
+    return this.configService.get('DATABASE_URL', { infer: true });
+  }
 }

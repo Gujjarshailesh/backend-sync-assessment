@@ -1,0 +1,243 @@
+// Prisma schema for the sync pipeline + revenue metrics service.
+//
+// Design notes (see docs/DESIGN.md for full rationale):
+// - `source` and `rawStatus` fields are plain strings, not enums. They come
+//   from external systems (HubSpot/Calendar/Stripe/seed-finance) whose
+//   vocabularies we don't control and want to extend without a migration.
+// - Fields that describe OUR OWN internal state machine (run status, sync
+//   mode, audit action, webhook processing status, canonical collected/not)
+//   ARE enums, since those are bounded and we control when they change.
+// - "Collected" status is resolved at query time via StatusMapping, never
+//   denormalized onto Transaction - see StatusMapping below.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Sync state & run history
+// ---------------------------------------------------------------------------
+
+/// One row per source: tracks the incremental cursor and last outcome.
+/// `source` is the primary key - there is exactly one current state per source.
+model SyncState {
+  source                String               @id
+  cursor                String?
+  cursorType            CursorType?          @map("cursor_type")
+  lastFullSyncAt        DateTime?            @map("last_full_sync_at")
+  lastIncrementalSyncAt DateTime?            @map("last_incremental_sync_at")
+  lastStatus            SyncRunSourceStatus? @map("last_status")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
+
+  @@map("sync_state")
+}
+
+/// One row per pipeline execution (manual trigger, cron, or webhook-driven).
+model SyncRun {
+  id          String        @id @default(uuid())
+  triggerType TriggerType   @map("trigger_type")
+  startedAt   DateTime      @default(now()) @map("started_at")
+  finishedAt  DateTime?     @map("finished_at")
+  status      SyncRunStatus @default(running)
+
+  sources   SyncRunSource[]
+  auditLogs AuditLog[]
+
+  @@map("sync_run")
+}
+
+/// Per-source outcome within a run - the observability layer that lets us
+/// answer "which source failed and why" without digging through raw logs.
+model SyncRunSource {
+  id              String              @id @default(uuid())
+  syncRunId       String              @map("sync_run_id")
+  syncRun         SyncRun             @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
+  source          String
+  mode            SyncMode
+  status          SyncRunSourceStatus
+  recordsFetched  Int                 @default(0) @map("records_fetched")
+  recordsUpserted Int                 @default(0) @map("records_upserted")
+  errorMessage    String?             @map("error_message")
+  startedAt       DateTime            @default(now()) @map("started_at")
+  finishedAt      DateTime?           @map("finished_at")
+
+  @@index([syncRunId])
+  @@index([source, startedAt(sort: Desc)])
+  @@map("sync_run_source")
+}
+
+enum TriggerType {
+  manual
+  scheduled
+  webhook
+}
+
+enum SyncRunStatus {
+  running
+  success
+  partial_failure
+  failed
+}
+
+enum SyncRunSourceStatus {
+  success
+  failed
+}
+
+enum SyncMode {
+  incremental
+  full
+}
+
+enum CursorType {
+  timestamp
+  token
+}
+
+// ---------------------------------------------------------------------------
+// Normalized entities (one table per canonical shape, not per source)
+// ---------------------------------------------------------------------------
+
+/// Normalized CRM contacts (HubSpot today, any future CRM source later).
+model Contact {
+  id              String    @id @default(uuid())
+  source          String
+  externalId      String    @map("external_id")
+  email           String?
+  firstName       String?   @map("first_name")
+  lastName        String?   @map("last_name")
+  phone           String?
+  lifecycleStage  String?   @map("lifecycle_stage")
+  sourceCreatedAt DateTime? @map("source_created_at")
+  sourceUpdatedAt DateTime  @map("source_updated_at")
+  rawPayload      Json      @map("raw_payload")
+  syncedAt        DateTime  @default(now()) @map("synced_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  /// The idempotency guarantee: the same external record can never land twice.
+  @@unique([source, externalId])
+  @@index([sourceUpdatedAt])
+  @@index([email])
+  @@map("contacts")
+}
+
+/// Normalized calendar events (Google Calendar today).
+model CalendarEvent {
+  id              String    @id @default(uuid())
+  source          String
+  externalId      String    @map("external_id")
+  calendarId      String    @map("calendar_id")
+  title           String
+  description     String?
+  location        String?
+  startTime       DateTime  @map("start_time")
+  endTime         DateTime  @map("end_time")
+  status          String
+  attendees       Json?
+  sourceUpdatedAt DateTime  @map("source_updated_at")
+  rawPayload      Json      @map("raw_payload")
+  syncedAt        DateTime  @default(now()) @map("synced_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  @@unique([source, externalId])
+  @@index([sourceUpdatedAt])
+  @@index([startTime])
+  @@map("calendar_events")
+}
+
+/// Normalized transactions/invoices - the table the revenue metrics service
+/// reads from. `rawStatus` is preserved verbatim; "collected" is resolved
+/// via StatusMapping at query time, never stored here.
+model Transaction {
+  id              String   @id @default(uuid())
+  source          String
+  externalId      String   @map("external_id")
+  customerRef     String?  @map("customer_ref")
+  amount          Int
+  currency        String   @default("usd")
+  rawStatus       String   @map("raw_status")
+  occurredAt      DateTime @map("occurred_at")
+  sourceUpdatedAt DateTime @map("source_updated_at")
+  rawPayload      Json     @map("raw_payload")
+  syncedAt        DateTime @default(now()) @map("synced_at")
+
+  @@unique([source, externalId])
+  @@index([occurredAt])
+  @@index([source, rawStatus, occurredAt])
+  @@map("transactions")
+}
+
+// ---------------------------------------------------------------------------
+// Revenue allow-list, audit trail, webhook idempotency
+// ---------------------------------------------------------------------------
+
+/// The allow-list of which (source, rawStatus) pairs count as "collected".
+/// An unmapped status defaults to not-collected at the application layer -
+/// this table is additive only, never an exclusion list.
+model StatusMapping {
+  id              String          @id @default(uuid())
+  source          String
+  rawStatus       String          @map("raw_status")
+  canonicalStatus CanonicalStatus @map("canonical_status")
+
+  @@unique([source, rawStatus])
+  @@map("status_mapping")
+}
+
+enum CanonicalStatus {
+  collected
+  not_collected
+  unknown
+}
+
+/// Traceability: for any normalized record, which run touched it and what
+/// happened (created/updated/skipped-as-duplicate/soft-deleted).
+model AuditLog {
+  id         String      @id @default(uuid())
+  entityType String      @map("entity_type")
+  source     String
+  externalId String      @map("external_id")
+  action     AuditAction
+  syncRunId  String?     @map("sync_run_id")
+  syncRun    SyncRun?    @relation(fields: [syncRunId], references: [id], onDelete: SetNull)
+  diff       Json?
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  @@index([entityType, externalId])
+  @@index([syncRunId])
+  @@map("audit_log")
+}
+
+enum AuditAction {
+  created
+  updated
+  skipped_duplicate
+  soft_deleted
+}
+
+/// Webhook-specific idempotency guard, separate from the row-level
+/// (source, externalId) unique constraint above - needed because some
+/// webhook events (e.g. deletions) have no direct row equivalent to upsert.
+model WebhookEvent {
+  id          String             @id @default(uuid())
+  source      String
+  eventId     String             @map("event_id")
+  receivedAt  DateTime           @default(now()) @map("received_at")
+  processedAt DateTime?          @map("processed_at")
+  status      WebhookEventStatus @default(received)
+
+  @@unique([source, eventId])
+  @@map("webhook_event")
+}
+
+enum WebhookEventStatus {
+  received
+  processed
+  ignored_duplicate
+  failed
+}
