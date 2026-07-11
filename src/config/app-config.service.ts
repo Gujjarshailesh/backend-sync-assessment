@@ -30,4 +30,35 @@ export class AppConfigService {
   get databaseUrl(): string {
     return this.configService.get('DATABASE_URL', { infer: true });
   }
+
+  get hubspotAccessToken(): string | undefined {
+    return this.configService.get('HUBSPOT_ACCESS_TOKEN', { infer: true });
+  }
+
+  get googleCalendarId(): string | undefined {
+    return this.configService.get('GOOGLE_CALENDAR_ID', { infer: true });
+  }
+
+  get googleServiceAccountEmail(): string | undefined {
+    return this.configService.get('GOOGLE_SERVICE_ACCOUNT_EMAIL', {
+      infer: true,
+    });
+  }
+
+  get googleServiceAccountPrivateKey(): string | undefined {
+    const raw = this.configService.get('GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY', {
+      infer: true,
+    });
+    // Private keys pasted into a single-line env var need their literal
+    // "\n" escapes turned back into real newlines.
+    return raw?.replace(/\\n/g, '\n');
+  }
+
+  get stripeSecretKey(): string | undefined {
+    return this.configService.get('STRIPE_SECRET_KEY', { infer: true });
+  }
+
+  get stripeWebhookSecret(): string | undefined {
+    return this.configService.get('STRIPE_WEBHOOK_SECRET', { infer: true });
+  }
 }

@@ -1,0 +1,36 @@
+# Render Blueprint - deploy via Render dashboard: New + -> Blueprint,
+# point at this repo. Secrets (marked sync: false) are set once in the
+# Render dashboard after the first deploy, never committed here.
+#
+# Note on migrations: buildCommand runs `prisma migrate deploy`, not
+# `migrate dev` - deploy applies existing committed migrations
+# non-interactively and never generates new ones, which is the correct,
+# safe behavior for a production build step.
+services:
+  - type: web
+    name: backend-sync-assessment
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install && npx prisma migrate deploy && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DATABASE_URL
+        sync: false
+      - key: HUBSPOT_ACCESS_TOKEN
+        sync: false
+      - key: GOOGLE_CALENDAR_ID
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_EMAIL
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
