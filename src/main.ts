@@ -15,6 +15,11 @@ async function bootstrap() {
   });
 
   app.useLogger(app.get(Logger));
+  // Enables the static admin dashboard (dashboard/) to call this API from a
+  // different origin (a different port, or a local file:// page). Open by
+  // default (no allowlist) since every endpoint here is read-only or an
+  // idempotent trigger with no user-specific auth to leak.
+  app.enableCors();
   app.useGlobalFilters(new AllExceptionsFilter());
   app.useGlobalPipes(
     new ValidationPipe({

@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sync Pipeline &amp; Revenue Dashboard</title>
+
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet" />
+  <link href="styles.css" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- ============================= TOP NAVBAR ============================= -->
+  <nav class="navbar navbar-expand-lg top-navbar fixed-top">
+    <div class="container-fluid">
+      <button class="btn btn-link text-white d-lg-none me-2" id="sidebarToggle" aria-label="Toggle navigation">
+        <i class="bi bi-list fs-4"></i>
+      </button>
+      <a class="navbar-brand fw-semibold" href="#">
+        <i class="bi bi-diagram-3-fill me-2"></i>Sync &amp; Revenue Dashboard
+      </a>
+      <div class="ms-auto d-flex align-items-center gap-3">
+        <span id="apiConnectionBadge" class="badge rounded-pill text-bg-secondary">
+          <i class="bi bi-hourglass-split me-1"></i>Connecting…
+        </span>
+        <button class="btn btn-sm btn-outline-light" id="globalRefreshBtn" title="Refresh current section">
+          <i class="bi bi-arrow-clockwise"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============================= SIDEBAR ============================= -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-inner">
+      <nav class="nav flex-column" id="sideNav">
+        <a class="nav-link active" data-section="health" href="#health"><i class="bi bi-heart-pulse"></i><span>Health</span></a>
+        <a class="nav-link" data-section="sync" href="#sync"><i class="bi bi-arrow-repeat"></i><span>Synchronization</span></a>
+        <a class="nav-link" data-section="calendar" href="#calendar"><i class="bi bi-calendar-event"></i><span>Google Calendar</span></a>
+        <a class="nav-link" data-section="hubspot" href="#hubspot"><i class="bi bi-people"></i><span>HubSpot</span></a>
+        <a class="nav-link" data-section="stripe" href="#stripe"><i class="bi bi-credit-card"></i><span>Stripe</span></a>
+        <a class="nav-link" data-section="revenue" href="#revenue"><i class="bi bi-graph-up-arrow"></i><span>Revenue</span></a>
+        <a class="nav-link" data-section="audit" href="#audit"><i class="bi bi-journal-text"></i><span>Audit Logs</span></a>
+      </nav>
+      <div class="sidebar-footer">
+        <small class="text-muted">API base</small>
+        <code id="apiBaseLabel" class="d-block text-truncate"></code>
+      </div>
+    </div>
+  </aside>
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+  <!-- ============================= MAIN CONTENT ============================= -->
+  <main class="main-content">
+
+    <!-- ---------------- HEALTH SECTION ---------------- -->
+    <section class="content-section active" id="section-health">
+      <div class="section-header">
+        <h2><i class="bi bi-heart-pulse me-2"></i>Health Dashboard</h2>
+        <button class="btn btn-sm btn-primary" onclick="loadHealth()">
+          <span class="spinner-border spinner-border-sm d-none" id="health-spinner"></span>
+          <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-sm-6 col-lg-3">
+          <div class="card stat-card">
+            <div class="card-body">
+              <div class="stat-icon bg-primary-subtle text-primary"><i class="bi bi-hdd-stack"></i></div>
+              <div>
+                <div class="stat-label">Application Status</div>
+                <div class="stat-value" id="health-app-status">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+          <div class="card stat-card">
+            <div class="card-body">
+              <div class="stat-icon bg-success-subtle text-success"><i class="bi bi-database-check"></i></div>
+              <div>
+                <div class="stat-label">Database Status</div>
+                <div class="stat-value" id="health-db-status">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+          <div class="card stat-card">
+            <div class="card-body">
+              <div class="stat-icon bg-info-subtle text-info"><i class="bi bi-gear"></i></div>
+              <div>
+                <div class="stat-label">Environment</div>
+                <div class="stat-value" id="health-env">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+          <div class="card stat-card">
+            <div class="card-body">
+              <div class="stat-icon bg-warning-subtle text-warning"><i class="bi bi-clock-history"></i></div>
+              <div>
+                <div class="stat-label">Uptime</div>
+                <div class="stat-value" id="health-uptime">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-plug me-2"></i>Connected Providers</span>
+          <small class="text-muted">from <code>GET /sync/state</code></small>
+        </div>
+        <div class="card-body">
+          <div class="row g-3" id="providers-grid">
+            <div class="col-12 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Loading providers…</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------- SYNCHRONIZATION SECTION ---------------- -->
+    <section class="content-section" id="section-sync">
+      <div class="section-header">
+        <h2><i class="bi bi-arrow-repeat me-2"></i>Synchronization</h2>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadSyncSection()">
+          <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-body">
+          <h5 class="card-title mb-3">Trigger Sync</h5>
+          <form class="row g-2 align-items-end" id="triggerForm">
+            <div class="col-sm-4 col-md-3">
+              <label class="form-label small text-muted">Source</label>
+              <select class="form-select" id="triggerSource">
+                <option value="">All sources</option>
+                <option value="google_calendar">google_calendar</option>
+                <option value="hubspot">hubspot</option>
+                <option value="stripe">stripe</option>
+                <option value="seed_finance">seed_finance</option>
+              </select>
+            </div>
+            <div class="col-sm-4 col-md-3">
+              <label class="form-label small text-muted">Mode</label>
+              <select class="form-select" id="triggerMode">
+                <option value="auto">auto</option>
+                <option value="full">full</option>
+                <option value="incremental">incremental</option>
+              </select>
+            </div>
+            <div class="col-sm-4 col-md-3">
+              <button type="submit" class="btn btn-primary w-100" id="triggerBtn">
+                <span class="spinner-border spinner-border-sm d-none" id="trigger-spinner"></span>
+                <i class="bi bi-play-fill"></i> Trigger Sync
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="row g-3 mb-1">
+        <div class="col-lg-6">
+          <div class="card h-100">
+            <div class="card-header">Latest Sync Status</div>
+            <div class="card-body" id="latest-sync-status">
+              <span class="text-muted">No sync runs yet.</span>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="card h-100">
+            <div class="card-header">Latest Sync Summary (provider-wise)</div>
+            <div class="card-body p-0">
+              <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle" id="latest-sync-summary-table">
+                  <thead><tr><th>Source</th><th>Mode</th><th>Status</th><th>Fetched</th><th>Upserted</th></tr></thead>
+                  <tbody><tr><td colspan="5" class="text-muted text-center py-3">No data</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="card-header">Sync State (per source)</div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle" id="sync-state-table">
+              <thead>
+                <tr><th>Source</th><th>Cursor Type</th><th>Last Full Sync</th><th>Last Incremental Sync</th><th>Last Status</th></tr>
+              </thead>
+              <tbody><tr><td colspan="5" class="text-center text-muted py-3">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>Sync History</span>
+          <small class="text-muted">from <code>GET /sync/runs</code> — click a row for full details</small>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle" id="sync-history-table">
+              <thead>
+                <tr><th>Started</th><th>Trigger</th><th>Status</th><th>Sources</th><th></th></tr>
+              </thead>
+              <tbody><tr><td colspan="5" class="text-center text-muted py-3">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------- GOOGLE CALENDAR SECTION ---------------- -->
+    <section class="content-section" id="section-calendar">
+      <div class="section-header">
+        <h2><i class="bi bi-calendar-event me-2"></i>Google Calendar</h2>
+      </div>
+      <div class="alert alert-warning" role="alert">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        <strong>Event list not available.</strong> The backend does not expose a
+        <code>GET /calendar-events</code> (or similar) endpoint — only the sync write-path exists for
+        this provider. This dashboard only calls existing endpoints and never displays mock data, so no
+        event list or event-details modal is shown here.
+      </div>
+      <div class="card">
+        <div class="card-header">What <em>is</em> available for this provider</div>
+        <div class="card-body" id="calendar-state-card">
+          <span class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Loading sync state…</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------- HUBSPOT SECTION ---------------- -->
+    <section class="content-section" id="section-hubspot">
+      <div class="section-header">
+        <h2><i class="bi bi-people me-2"></i>HubSpot</h2>
+      </div>
+      <div class="alert alert-warning" role="alert">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        <strong>Contacts / Companies / Deals lists not available.</strong> The backend does not expose
+        <code>GET /contacts</code>, <code>/companies</code>, or <code>/deals</code> endpoints. It also
+        only implements a <strong>Contacts</strong> sync adapter — there is no Companies or Deals
+        integration at all in this backend. No fake records are shown here.
+      </div>
+      <div class="card">
+        <div class="card-header">What <em>is</em> available for this provider</div>
+        <div class="card-body" id="hubspot-state-card">
+          <span class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Loading sync state…</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------- STRIPE SECTION ---------------- -->
+    <section class="content-section" id="section-stripe">
+      <div class="section-header">
+        <h2><i class="bi bi-credit-card me-2"></i>Stripe</h2>
+      </div>
+      <div class="alert alert-warning" role="alert">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        <strong>Transaction list not available.</strong> The backend does not expose a
+        <code>GET /transactions</code> endpoint. Individual payment records and a transaction-details
+        modal can't be shown without fabricating data. The <a href="#revenue" data-section-link="revenue">Revenue</a>
+        section below shows real aggregated totals computed from this same transaction data via the
+        endpoints that do exist.
+      </div>
+      <div class="card">
+        <div class="card-header">What <em>is</em> available for this provider</div>
+        <div class="card-body" id="stripe-state-card">
+          <span class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Loading sync state…</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------- REVENUE SECTION ---------------- -->
+    <section class="content-section" id="section-revenue">
+      <div class="section-header">
+        <h2><i class="bi bi-graph-up-arrow me-2"></i>Revenue</h2>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-body">
+          <form class="row g-2 align-items-end" id="revenueForm">
+            <div class="col-6 col-md-3">
+              <label class="form-label small text-muted">From</label>
+              <input type="date" class="form-control" id="revenueFrom" required />
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label small text-muted">To</label>
+              <input type="date" class="form-control" id="revenueTo" required />
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label small text-muted">Granularity</label>
+              <select class="form-select" id="revenueGranularity">
+                <option value="day">Day</option>
+                <option value="week">Week</option>
+              </select>
+            </div>
+            <div class="col-6 col-md-3">
+              <button type="submit" class="btn btn-primary w-100">
+                <span class="spinner-border spinner-border-sm d-none" id="revenue-spinner"></span>
+                <i class="bi bi-funnel"></i> Apply
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="row g-3 mb-4">
+        <div class="col-md-4">
+          <div class="card stat-card h-100">
+            <div class="card-body">
+              <div class="stat-icon bg-success-subtle text-success"><i class="bi bi-cash-coin"></i></div>
+              <div>
+                <div class="stat-label">Total Collected</div>
+                <div class="stat-value" id="revenue-total">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card stat-card h-100">
+            <div class="card-body">
+              <div class="stat-icon bg-primary-subtle text-primary"><i class="bi bi-currency-exchange"></i></div>
+              <div>
+                <div class="stat-label">Currency</div>
+                <div class="stat-value" id="revenue-currency">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card stat-card h-100">
+            <div class="card-body">
+              <div class="stat-icon bg-info-subtle text-info"><i class="bi bi-bar-chart-steps"></i></div>
+              <div>
+                <div class="stat-label">Buckets Returned</div>
+                <div class="stat-value" id="revenue-bucket-count">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-header">Revenue Breakdown</div>
+        <div class="card-body">
+          <canvas id="revenueChart" height="90"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Breakdown Table</div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle" id="revenue-breakdown-table">
+              <thead><tr><th>Period Start</th><th>Period End</th><th>Total Collected</th></tr></thead>
+              <tbody><tr><td colspan="3" class="text-center text-muted py-3">Apply a date range above</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------------- AUDIT LOGS SECTION ---------------- -->
+    <section class="content-section" id="section-audit">
+      <div class="section-header">
+        <h2><i class="bi bi-journal-text me-2"></i>Audit Logs</h2>
+      </div>
+      <div class="alert alert-warning" role="alert">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        <strong>Audit log listing not available.</strong> The backend does not expose a
+        <code>GET /audit-log</code> (or similar) endpoint. Audit entries are written internally on every
+        record sync, but there is no read endpoint to list or inspect them from this dashboard.
+        The closest real substitute is the per-source <strong>records fetched / upserted</strong> counts
+        already shown in the <a href="#sync" data-section-link="sync">Synchronization</a> section, which
+        come from the same underlying sync runs that generate audit entries.
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============================= TOASTS ============================= -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer" style="z-index: 1080;"></div>
+
+  <!-- ============================= MODAL: Sync trigger result ============================= -->
+  <div class="modal fade" id="syncResultModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-check2-circle me-2"></i>Sync Trigger Response</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div id="syncResultSummary" class="mb-3"></div>
+          <pre class="json-view" id="syncResultJson"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================= MODAL: Sync run details ============================= -->
+  <div class="modal fade" id="runDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-list-check me-2"></i>Sync Run Details</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" id="runDetailBody">
+          <span class="text-muted">Loading…</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
