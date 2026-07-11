@@ -1,6 +1,8 @@
 # backend-sync-assessment
 
-A backend sync pipeline that ingests HubSpot (CRM), Google Calendar, and Stripe (payments) — plus a fabricated `seed_finance` source — into one normalized Postgres schema, and a revenue metrics service that computes a single, drift-proof "collected" total across sources with different status vocabularies.
+A backend sync pipeline that ingests HubSpot (CRM), Google Calendar, and Stripe (payments) — plus a fabricated `seed_finance` source — into one normalized Postgres schema, a revenue metrics service that computes a single, drift-proof "collected" total across sources with different status vocabularies, and a static admin dashboard served from the same app for browsing all of it.
+
+**Live app:** https://backend-sync-assessment.vercel.app (dashboard at `/`, API at `/health`, `/sync/...`, `/metrics/...`, etc.)
 
 ## Architecture
 
@@ -8,8 +10,10 @@ Full design rationale lives in [`docs/DESIGN.md`](docs/DESIGN.md) and the implem
 
 - **`src/sources/`** — one adapter per provider (`google-calendar`, `hubspot`, `stripe`, `seed-finance`), all implementing the same `SourceAdapter` interface (`fetchFull`, `fetchIncremental`, `persist`). Adding a fifth provider means writing one adapter and registering it in `sources.module.ts` — nothing else changes.
 - **`src/sync/`** — `AdapterRunnerService` runs one adapter end to end (resolves full-vs-incremental, catches a stale/expired cursor and falls back to a full fetch, writes idempotently, logs to `audit_log`). `SyncOrchestratorService` runs every adapter within one `SyncRun` via `Promise.allSettled`, so one dead source never blocks the others. `StripeWebhookController` handles push-based updates idempotently.
-- **`src/metrics/`** — `RevenueCalculatorService` is the single query both the summary and breakdown endpoints call; "collected" is resolved via an allow-list (`status_mapping` table), not an exclusion list, and resolved at query time so adding a new status later never requires a backfill.
+- **`src/metrics/`** — `RevenueCalculatorService` is the single query both the summary and breakdown endpoints call; "collected" is resolved via an allow-list (`status_mapping` table), not an exclusion list, and resolved at query time so adding a new status later never requires a backfill. `StatusMappingService` also exposes the raw allow-list for display purposes.
+- **`src/records/`** — read-only, database-backed list endpoints (`/contacts`, `/calendar-events`, `/transactions`, `/audit-log`) so the already-synced data can be browsed directly, e.g. from the dashboard. Thin `PrismaService` reads only — no business logic.
 - **`prisma/schema.prisma`** — the full data model: sync state/history, normalized entities, the status-mapping allow-list, audit log, webhook idempotency table.
+- **`public/`** — the static admin dashboard (`index.html` / `script.js` / `styles.css`), served by the NestJS app itself via `@nestjs/serve-static` (wired in `src/app.module.ts`), so the dashboard and the API share one domain/deployment. See [`public/README.md`](public/README.md) for what each dashboard section shows and which endpoint backs it.
 
 ## Requirements
 
@@ -57,9 +61,27 @@ npm run db:studio   # visual browser for every table
 ```bash
 curl "localhost:3000/metrics/revenue/summary?from=2026-01-01&to=2026-12-31"
 curl "localhost:3000/metrics/revenue/breakdown?from=2026-01-01&to=2026-12-31&granularity=day"
+curl "localhost:3000/metrics/revenue/status-mapping"   # the raw allow-list, for display
 ```
 
-Both are guaranteed to agree — see `test/integration/revenue-invariant.spec.ts`.
+Summary and breakdown are guaranteed to agree — see `test/integration/revenue-invariant.spec.ts`.
+
+## Browsing synced records
+
+Read-only endpoints over the already-synced data (no business logic, no side effects):
+
+```bash
+curl "localhost:3000/contacts?limit=50"          # HubSpot contacts
+curl "localhost:3000/calendar-events?limit=50"   # Google Calendar events
+curl "localhost:3000/transactions?limit=50"      # Stripe payment intents
+curl "localhost:3000/audit-log?limit=50"         # every create/update recorded during sync
+```
+
+`limit` is optional (default 50, capped at 200).
+
+## Admin dashboard
+
+A static Bootstrap 5 + vanilla JS dashboard lives in [`public/`](public/) and is served by this same app at `/` — open https://backend-sync-assessment.vercel.app/ (or `http://localhost:3000/` locally) to see live health, synchronization history/trigger, per-provider record browsing (with a raw-JSON detail modal per row), revenue charts, and the audit log. It talks to the API via `fetch()` only — no mock data; anything it can't back with a real endpoint (HubSpot Companies/Deals, which have no adapter at all) says so explicitly instead of fabricating rows. See [`public/README.md`](public/README.md) for the endpoint-to-section mapping.
 
 ## Testing
 
@@ -89,6 +111,8 @@ https://backend-sync-assessment.vercel.app
 - **Only one webhook integration (Stripe)**, not one per provider — it demonstrates the exact "webhook firing twice" idempotency requirement cheaply (via the Stripe CLI's signing scheme), without the added setup cost of a second provider's webhook subscription for the same underlying mechanism.
 - **A partial unique index enforces "at most one sync run in progress"** at the database level (`sync_run_single_active_idx`), not an application-level check-then-create — the latter has a real race condition, confirmed by firing two simultaneous triggers during development.
 - **Single currency (USD), UTC timestamps** — multi-currency conversion is out of scope.
+- **The dashboard is served by the same NestJS app** (`@nestjs/serve-static`, `public/` directory) rather than as a separate static site — one deployment, one domain, no separate CORS-sensitive origin to manage. CORS (`app.enableCors()`) is still left on since it's a harmless, read-mostly, no-auth API.
+- **`/contacts`, `/calendar-events`, `/transactions`, `/audit-log` are thin read endpoints**, not part of the core sync/metrics domain — they exist to let already-synced data be browsed (by the dashboard or otherwise) without duplicating any sync or revenue logic.
 - Tests run against the same dev database rather than an isolated test database (see Testing section above).
 
 ## Sources & references
@@ -102,4 +126,4 @@ https://backend-sync-assessment.vercel.app
 
 ## AI usage disclosure
 
-This project was built collaboratively with Claude (Anthropic). Claude was used throughout: architecture and design discussion, implementation of all source files, debugging real issues found during verification (Supabase connectivity, a race condition in the sync concurrency guard, a TypeScript build-output path bug), and writing this documentation. All code was reviewed and verified against real external APIs (live HubSpot, Google Calendar, and Stripe test-mode accounts) and a real Supabase Postgres database before being considered complete.
+This project was built collaboratively with Claude (Anthropic). Claude was used throughout: architecture and design discussion, implementation of all source files (backend and the `public/` dashboard), debugging real issues found during verification (Supabase connectivity, a race condition in the sync concurrency guard, a TypeScript build-output path bug, a stale incremental-build cache, a CORS blocker between the dashboard and API), and writing this documentation. All code was reviewed and verified against real external APIs (live HubSpot, Google Calendar, and Stripe test-mode accounts) and a real Supabase Postgres database — including live browser testing of the dashboard against the running API — before being considered complete.
