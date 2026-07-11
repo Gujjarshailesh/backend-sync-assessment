@@ -1,5 +1,6 @@
 import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
 import { RevenueCalculatorService } from './revenue-calculator.service';
+import { StatusMappingService } from './status-mapping.service';
 import {
   BreakdownQueryDto,
   DateRangeQueryDto,
@@ -9,7 +10,15 @@ const MAX_RANGE_MS = 3 * 365 * 24 * 60 * 60 * 1000; // ~3 years - generous, but 
 
 @Controller('metrics/revenue')
 export class MetricsController {
-  constructor(private readonly calculator: RevenueCalculatorService) {}
+  constructor(
+    private readonly calculator: RevenueCalculatorService,
+    private readonly statusMapping: StatusMappingService,
+  ) {}
+
+  @Get('status-mapping')
+  async statusMappings() {
+    return this.statusMapping.listAll();
+  }
 
   @Get('summary')
   async summary(@Query() query: DateRangeQueryDto) {

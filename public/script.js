@@ -1,7 +1,7 @@
 /* ==========================================================================
    Sync Pipeline & Revenue Dashboard
    Vanilla JS + Bootstrap 5 + Chart.js. Talks ONLY to the real endpoints
-   already implemented by the NestJS backend:
+   implemented by the NestJS backend:
      GET  /health
      POST /sync/trigger
      GET  /sync/runs
@@ -9,17 +9,20 @@
      GET  /sync/state
      GET  /metrics/revenue/summary
      GET  /metrics/revenue/breakdown
-   No other endpoints exist on the backend - sections that would need one
-   (Calendar events, HubSpot contacts/companies/deals, Stripe transactions,
-   Audit logs) show an honest "not available" notice instead of mock data.
+     GET  /metrics/revenue/status-mapping
+     GET  /contacts
+     GET  /calendar-events
+     GET  /transactions
+     GET  /audit-log
+   HubSpot Companies/Deals have no backing adapter or table anywhere in the
+   system, so that gap is called out with a notice instead of fake data.
    ========================================================================== */
 
-// Change this if the API runs somewhere other than localhost:3000.
-// NOTE: the backend does not currently enable CORS. If this dashboard is
-// served from a different origin (a different port, or opened as a local
-// file), cross-origin fetch requests will be blocked by the browser unless
-// CORS is enabled on the server. See README in this folder.
-const API_BASE = 'http://localhost:3000';
+// Live backend URL. The dashboard is served from the same NestJS app/domain
+// (see ServeStaticModule in src/app.module.ts), but API_BASE is kept explicit
+// rather than relative so this file keeps working if it's ever opened
+// directly (file://) or served from elsewhere.
+const API_BASE = 'https://backend-sync-assessment.vercel.app';
 
 let revenueChart = null;
 let activeSection = 'health';
@@ -181,19 +184,19 @@ function loadSection(section) {
       loadSyncSection();
       break;
     case 'calendar':
-      loadProviderStateCard('google_calendar', 'calendar-state-card');
+      loadCalendarSection();
       break;
     case 'hubspot':
-      loadProviderStateCard('hubspot', 'hubspot-state-card');
+      loadHubspotSection();
       break;
     case 'stripe':
-      loadProviderStateCard('stripe', 'stripe-state-card');
+      loadStripeSection();
       break;
     case 'revenue':
       // Revenue only loads on explicit "Apply" - date range must be chosen first.
       break;
     case 'audit':
-      // Nothing to load - static "not available" notice only.
+      loadAuditSection();
       break;
     default:
       break;
@@ -461,7 +464,7 @@ async function handleTriggerSubmit(event) {
   }
 }
 
-/* ---------------- provider "not available" state cards (Calendar/HubSpot/Stripe) ---------------- */
+/* ---------------- provider state cards (Calendar/HubSpot/Stripe) ---------------- */
 
 async function loadProviderStateCard(source, containerId) {
   const container = document.getElementById(containerId);
@@ -481,6 +484,159 @@ async function loadProviderStateCard(source, containerId) {
       </div>`;
   } catch (error) {
     container.innerHTML = `<div class="text-danger">Failed to load sync state: ${escapeHtml(error.message)}</div>`;
+  }
+}
+
+/* ---------------- shared record-detail modal ---------------- */
+
+function showRecordDetail(title, record) {
+  document.getElementById('recordDetailTitle').innerHTML = `<i class="bi bi-card-list me-2"></i>${escapeHtml(title)}`;
+  document.getElementById('recordDetailJson').textContent = JSON.stringify(record, null, 2);
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('recordDetailModal')).show();
+}
+
+let calendarEventsCache = [];
+let hubspotContactsCache = [];
+let stripeTransactionsCache = [];
+let stripeStatusMappingCache = [];
+
+/* ------------------------------ google calendar ------------------------------ */
+
+async function loadCalendarSection() {
+  await Promise.all([
+    loadProviderStateCard('google_calendar', 'calendar-state-card'),
+    loadCalendarEvents(),
+  ]);
+}
+
+async function loadCalendarEvents() {
+  const tbody = document.querySelector('#calendar-events-table tbody');
+  try {
+    const events = await apiFetch('/calendar-events?limit=100');
+    calendarEventsCache = Array.isArray(events) ? events : [];
+    if (!calendarEventsCache.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No calendar events yet - trigger a sync from the Synchronization tab.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = calendarEventsCache
+      .map(
+        (e, i) => `
+      <tr class="clickable-row" onclick="showRecordDetail('Calendar Event', calendarEventsCache[${i}])">
+        <td>${escapeHtml(e.title ?? '—')}</td>
+        <td>${formatDateTime(e.startTime)}</td>
+        <td>${formatDateTime(e.endTime)}</td>
+        <td>${statusBadge(e.status || 'unknown')}</td>
+        <td class="text-muted small">${escapeHtml(e.calendarId ?? '—')}</td>
+      </tr>`,
+      )
+      .join('');
+  } catch (error) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">Failed to load calendar events: ${escapeHtml(error.message)}</td></tr>`;
+  }
+}
+
+/* ---------------------------------- hubspot ---------------------------------- */
+
+async function loadHubspotSection() {
+  await Promise.all([
+    loadProviderStateCard('hubspot', 'hubspot-state-card'),
+    loadHubspotContacts(),
+  ]);
+}
+
+async function loadHubspotContacts() {
+  const tbody = document.querySelector('#hubspot-contacts-table tbody');
+  try {
+    const contacts = await apiFetch('/contacts?limit=100');
+    hubspotContactsCache = Array.isArray(contacts) ? contacts : [];
+    if (!hubspotContactsCache.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No contacts yet - trigger a sync from the Synchronization tab.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = hubspotContactsCache
+      .map(
+        (c, i) => `
+      <tr class="clickable-row" onclick="showRecordDetail('HubSpot Contact', hubspotContactsCache[${i}])">
+        <td>${escapeHtml([c.firstName, c.lastName].filter(Boolean).join(' ') || '—')}</td>
+        <td>${escapeHtml(c.email ?? '—')}</td>
+        <td>${escapeHtml(c.phone ?? '—')}</td>
+        <td>${escapeHtml(c.lifecycleStage ?? '—')}</td>
+        <td>${formatDateTime(c.sourceUpdatedAt)}</td>
+      </tr>`,
+      )
+      .join('');
+  } catch (error) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">Failed to load contacts: ${escapeHtml(error.message)}</td></tr>`;
+  }
+}
+
+/* ---------------------------------- stripe ---------------------------------- */
+
+async function loadStripeSection() {
+  await Promise.all([
+    loadProviderStateCard('stripe', 'stripe-state-card'),
+    loadStripeTransactions(),
+  ]);
+}
+
+async function loadStripeTransactions() {
+  const tbody = document.querySelector('#stripe-transactions-table tbody');
+  try {
+    const [transactions, mappings] = await Promise.all([
+      apiFetch('/transactions?limit=100'),
+      apiFetch('/metrics/revenue/status-mapping'),
+    ]);
+    stripeTransactionsCache = Array.isArray(transactions) ? transactions : [];
+    stripeStatusMappingCache = Array.isArray(mappings) ? mappings : [];
+    if (!stripeTransactionsCache.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No transactions yet - trigger a sync from the Synchronization tab.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = stripeTransactionsCache
+      .map((t, i) => {
+        const mapping = stripeStatusMappingCache.find((m) => m.source === t.source && m.rawStatus === t.rawStatus);
+        const collected = mapping?.canonicalStatus === 'collected';
+        return `
+      <tr class="clickable-row" onclick="showRecordDetail('Stripe Transaction', stripeTransactionsCache[${i}])">
+        <td>${formatDateTime(t.occurredAt)}</td>
+        <td>${formatMoney(t.amount, t.currency)}</td>
+        <td><span class="badge text-bg-light border">${escapeHtml(t.rawStatus)}</span></td>
+        <td><span class="badge rounded-pill ${collected ? 'text-bg-success' : 'text-bg-secondary'}">${collected ? 'Collected' : 'Not collected'}</span></td>
+      </tr>`;
+      })
+      .join('');
+  } catch (error) {
+    tbody.innerHTML = `<tr><td colspan="4" class="text-center text-danger py-3">Failed to load transactions: ${escapeHtml(error.message)}</td></tr>`;
+  }
+}
+
+/* -------------------------------- audit logs -------------------------------- */
+
+let auditLogCache = [];
+
+async function loadAuditSection() {
+  const tbody = document.querySelector('#audit-log-table tbody');
+  try {
+    const entries = await apiFetch('/audit-log?limit=100');
+    auditLogCache = Array.isArray(entries) ? entries : [];
+    if (!auditLogCache.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No audit entries yet - trigger a sync from the Synchronization tab.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = auditLogCache
+      .map(
+        (a, i) => `
+      <tr class="clickable-row" onclick="showRecordDetail('Audit Log Entry', auditLogCache[${i}])">
+        <td>${formatDateTime(a.createdAt)}</td>
+        <td>${escapeHtml(a.entityType ?? '—')}</td>
+        <td>${escapeHtml(a.source ?? '—')}</td>
+        <td><span class="badge text-bg-light border">${escapeHtml(a.action)}</span></td>
+        <td class="text-muted small">${escapeHtml(a.externalId ?? '—')}</td>
+      </tr>`,
+      )
+      .join('');
+  } catch (error) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">Failed to load audit log: ${escapeHtml(error.message)}</td></tr>`;
   }
 }
 

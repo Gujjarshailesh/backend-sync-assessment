@@ -71,14 +71,13 @@ npm run test:e2e        # HTTP surface happy paths (trigger -> runs -> state -> 
 
 Integration/e2e tests run against whatever `DATABASE_URL` is configured (the same dev database used throughout this project, not an isolated test database — a dedicated test DB would be the right call for a larger project but is out of scope here). Every row these tests create is cleaned up afterward.
 
-## Deployment (Render)
+## Deployment (Vercel)
 
-`render.yaml` is a Render Blueprint — in the Render dashboard: **New + → Blueprint**, point at this repo. It configures:
-- Build: `npm install && npx prisma migrate deploy && npm run build` (migrate **deploy**, not `dev` — applies existing committed migrations non-interactively, never generates new ones)
-- Start: `npm run start:prod`
-- Health check: `/health`
+The application is deployed on **Vercel**.
 
-Secrets (`DATABASE_URL`, provider credentials, `STRIPE_WEBHOOK_SECRET`) are marked `sync: false` in the blueprint and must be set once in the Render dashboard after the first deploy.
+**Production URL**
+
+https://backend-sync-assessment.vercel.app
 
 ## Key design decisions / tradeoffs
 

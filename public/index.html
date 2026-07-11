@@ -226,18 +226,28 @@
     <section class="content-section" id="section-calendar">
       <div class="section-header">
         <h2><i class="bi bi-calendar-event me-2"></i>Google Calendar</h2>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadCalendarSection()">
+          <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
       </div>
-      <div class="alert alert-warning" role="alert">
-        <i class="bi bi-exclamation-triangle-fill me-2"></i>
-        <strong>Event list not available.</strong> The backend does not expose a
-        <code>GET /calendar-events</code> (or similar) endpoint — only the sync write-path exists for
-        this provider. This dashboard only calls existing endpoints and never displays mock data, so no
-        event list or event-details modal is shown here.
-      </div>
-      <div class="card">
-        <div class="card-header">What <em>is</em> available for this provider</div>
+      <div class="card mb-4">
+        <div class="card-header">Sync State</div>
         <div class="card-body" id="calendar-state-card">
           <span class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Loading sync state…</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>Calendar Events</span>
+          <small class="text-muted">from <code>GET /calendar-events</code> — click a row for details</small>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle" id="calendar-events-table">
+              <thead><tr><th>Title</th><th>Start</th><th>End</th><th>Status</th><th>Calendar</th></tr></thead>
+              <tbody><tr><td colspan="5" class="text-center text-muted py-3">Loading…</td></tr></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
@@ -246,18 +256,35 @@
     <section class="content-section" id="section-hubspot">
       <div class="section-header">
         <h2><i class="bi bi-people me-2"></i>HubSpot</h2>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadHubspotSection()">
+          <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
       </div>
       <div class="alert alert-warning" role="alert">
         <i class="bi bi-exclamation-triangle-fill me-2"></i>
-        <strong>Contacts / Companies / Deals lists not available.</strong> The backend does not expose
-        <code>GET /contacts</code>, <code>/companies</code>, or <code>/deals</code> endpoints. It also
-        only implements a <strong>Contacts</strong> sync adapter — there is no Companies or Deals
-        integration at all in this backend. No fake records are shown here.
+        <strong>Companies / Deals lists not available.</strong> The backend only implements a
+        <strong>Contacts</strong> sync adapter — there is no Companies or Deals integration at all in
+        this backend, so no fake records are shown for those. Contacts below are real, live data from
+        <code>GET /contacts</code>.
       </div>
-      <div class="card">
-        <div class="card-header">What <em>is</em> available for this provider</div>
+      <div class="card mb-4">
+        <div class="card-header">Sync State</div>
         <div class="card-body" id="hubspot-state-card">
           <span class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Loading sync state…</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>Contacts</span>
+          <small class="text-muted">from <code>GET /contacts</code> — click a row for details</small>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle" id="hubspot-contacts-table">
+              <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Lifecycle Stage</th><th>Updated</th></tr></thead>
+              <tbody><tr><td colspan="5" class="text-center text-muted py-3">Loading…</td></tr></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
@@ -266,19 +293,31 @@
     <section class="content-section" id="section-stripe">
       <div class="section-header">
         <h2><i class="bi bi-credit-card me-2"></i>Stripe</h2>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadStripeSection()">
+          <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
       </div>
-      <div class="alert alert-warning" role="alert">
-        <i class="bi bi-exclamation-triangle-fill me-2"></i>
-        <strong>Transaction list not available.</strong> The backend does not expose a
-        <code>GET /transactions</code> endpoint. Individual payment records and a transaction-details
-        modal can't be shown without fabricating data. The <a href="#revenue" data-section-link="revenue">Revenue</a>
-        section below shows real aggregated totals computed from this same transaction data via the
-        endpoints that do exist.
-      </div>
-      <div class="card">
-        <div class="card-header">What <em>is</em> available for this provider</div>
+      <div class="card mb-4">
+        <div class="card-header">Sync State</div>
         <div class="card-body" id="stripe-state-card">
           <span class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Loading sync state…</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>Transactions</span>
+          <small class="text-muted">
+            from <code>GET /transactions</code> — "Collected" resolved via <code>GET /metrics/revenue/status-mapping</code> —
+            click a row for details
+          </small>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle" id="stripe-transactions-table">
+              <thead><tr><th>Occurred</th><th>Amount</th><th>Raw Status</th><th>Collected?</th></tr></thead>
+              <tbody><tr><td colspan="4" class="text-center text-muted py-3">Loading…</td></tr></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
@@ -377,15 +416,23 @@
     <section class="content-section" id="section-audit">
       <div class="section-header">
         <h2><i class="bi bi-journal-text me-2"></i>Audit Logs</h2>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadAuditSection()">
+          <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
       </div>
-      <div class="alert alert-warning" role="alert">
-        <i class="bi bi-exclamation-triangle-fill me-2"></i>
-        <strong>Audit log listing not available.</strong> The backend does not expose a
-        <code>GET /audit-log</code> (or similar) endpoint. Audit entries are written internally on every
-        record sync, but there is no read endpoint to list or inspect them from this dashboard.
-        The closest real substitute is the per-source <strong>records fetched / upserted</strong> counts
-        already shown in the <a href="#sync" data-section-link="sync">Synchronization</a> section, which
-        come from the same underlying sync runs that generate audit entries.
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>Latest Audit Entries</span>
+          <small class="text-muted">from <code>GET /audit-log</code> — click a row for details</small>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle" id="audit-log-table">
+              <thead><tr><th>When</th><th>Entity</th><th>Source</th><th>Action</th><th>External ID</th></tr></thead>
+              <tbody><tr><td colspan="5" class="text-center text-muted py-3">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -420,6 +467,21 @@
         </div>
         <div class="modal-body" id="runDetailBody">
           <span class="text-muted">Loading…</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================= MODAL: Record details ============================= -->
+  <div class="modal fade" id="recordDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="recordDetailTitle"><i class="bi bi-card-list me-2"></i>Record Details</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <pre class="json-view" id="recordDetailJson"></pre>
         </div>
       </div>
     </div>

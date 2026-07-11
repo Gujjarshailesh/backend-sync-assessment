@@ -27,4 +27,11 @@ export class StatusMappingService {
       (await this.resolve(source, rawStatus)) === CanonicalStatus.collected
     );
   }
+
+  /** The full allow-list, for display (e.g. a dashboard resolving a badge per transaction). */
+  async listAll() {
+    return this.prisma.statusMapping.findMany({
+      orderBy: [{ source: 'asc' }, { rawStatus: 'asc' }],
+    });
+  }
 }
